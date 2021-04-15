@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Small device that shows the nearest plane using the ADSB Exchange API
+# Small device that shows the nearest plane using Dump1090
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 import os
@@ -17,7 +17,7 @@ import subprocess
 
 # Contains API_KEY, MY_LAT, MY_LONG and RADIUS
 
-from planes_config import API_KEY, MY_LAT, MY_LONG, RADIUS
+from planes_config import MY_LAT, MY_LONG, RADIUS
 
 # Contains the north and position variables and is used to avoid
 # calibration position is the current position of the stepper motor in
@@ -43,7 +43,7 @@ def button_wait():
 # THE AIRCRAFT
 
 LED_COUNT = 16
-STRIP_PIN = board.D18
+STRIP_PIN = board.D24
 strip = neopixel.NeoPixel(STRIP_PIN, LED_COUNT)
 
 # Default brightness used for each of the RGB components of the LEDs'
