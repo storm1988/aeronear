@@ -1,6 +1,6 @@
+# -*- coding: utf-8 -*-
+
 # Small device that shows the nearest plane using the ADSB Exchange API
-#
-# Copyright (c) 2021 John Graham-Cumming
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 import os
