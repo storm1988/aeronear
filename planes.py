@@ -43,7 +43,7 @@ def button_wait():
 # THE AIRCRAFT
 
 LED_COUNT = 16
-STRIP_PIN = board.D24
+STRIP_PIN = board.D18
 strip = neopixel.NeoPixel(STRIP_PIN, LED_COUNT)
 
 # Default brightness used for each of the RGB components of the LEDs'
