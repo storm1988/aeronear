@@ -551,7 +551,7 @@ while True:
     for ac in j['aircraft']:
         ok = True
         for r in required:
-            if r not in ac or ac[r].strip() == '':
+            if r not in ac:
                 ok = False
                 break
 
