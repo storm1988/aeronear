@@ -446,7 +446,7 @@ def spotted(flight, airline, from_airport, from_city, from_country,
     img = ImageOps.flip(img)
     img = ImageOps.mirror(img)
     screen_show(img)
-    screen_backlight(True)
+    #screen_backlight(True)
     plane_track(trak)
     save_position()
 
@@ -503,7 +503,7 @@ def blank():
     img = Image.new('RGB', (320, 480), color=(0, 0, 0))
     d = ImageDraw.Draw(img)
     screen_show(img)
-    screen_backlight(False)
+    #screen_backlight(False)
 
 
 # required contains a list of fields that must be present and
@@ -541,6 +541,7 @@ while True:
     j = planes.json()
 
     if j is None or j['aircraft'] is None:
+        print("No planes received")
         blank()
         continue
 
@@ -562,6 +563,7 @@ while True:
     # and display the nearest
 
     if len(near) > 0:
+        print(len(near).__str__() + " planes nearby")
         near.sort(key=distance)
         ac = near[0]
         extra = getplaneExtraData(ac['hex']).json()
@@ -591,3 +593,4 @@ while True:
     else:
         update_delay = no_planes_delay
         blank()
+        print("No planes nearby")
