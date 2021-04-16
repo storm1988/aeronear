@@ -201,8 +201,8 @@ accumulated_error = 0.0
 # north. It uses the position variable to determine the number of
 # steps needed and goes by the shortest route (clockwise or
 # anti-clockwise)
-def plane_track(trak):
-    d = trak * degree - position
+def plane_track(track):
+    d = track * degree - position
     delta = int(d)
 
     global accumulated_error
@@ -394,7 +394,7 @@ def screen_start():
 # sets the LED strip to show where to look for it
 def spotted(flight, airline, from_airport, from_city, from_country,
             to_airport, to_city, to_country, aircraft, altitude,
-            bearing, trak):
+            bearing, track):
     strip_clear()
     strip[(north + int(LED_COUNT * bearing / 360)) % LED_COUNT] = (0,
                                                                    led_intensity,
@@ -441,13 +441,13 @@ def spotted(flight, airline, from_airport, from_city, from_country,
     y = 480 - spacing
     y = text(d, 10, y, altitude + ' ft', 24, True)
     y = text(d, 10, y, aircraft, 24, True)
-    y = text(d, 10, y, str(round(trak)) + '°', 24, True)
+    y = text(d, 10, y, str(round(track)) + '°', 24, True)
 
     img = ImageOps.flip(img)
     img = ImageOps.mirror(img)
     screen_show(img)
     #screen_backlight(True)
-    plane_track(trak)
+    plane_track(track)
     save_position()
 
 
@@ -596,9 +596,9 @@ while True:
             to_country = to_[3]
         altitude = ac['altitude']
         b = bearing(MY_LAT, MY_LONG, float(ac['lat']), float(ac['lon']))
-        trak = float(ac['trak'])
+        track = float(ac['track'])
         spotted(flight, airline, from_airport, from_city, from_country,
-                to_airport, to_city, to_country, plane, altitude, b, trak)
+                to_airport, to_city, to_country, plane, altitude, b, track)
         update_delay = tracking_plane_delay
     else:
         update_delay = no_planes_delay
