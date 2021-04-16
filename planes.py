@@ -570,21 +570,31 @@ while True:
         try:
             extra['ModeS']
         except:
-            plane = "??????"
-            airline = "??????"
+            plane = ""
+            airline = ""
         else:
             plane = findcsv('planes.dat', 2, extra['ICAOTypeCode'])[0]
             airline = findcsv('airlines.dat', 4, extra['OperatorFlagCode'])[1]
-        flight = ac['flight'].strip()
+        try:
+            flight = ac['flight'].strip()
+        except:
+            flight = ''
+            from_airport = ''
+            from_city = ''
+            from_country = ''
+            to_airport = ''
+            to_city = ''
+            to_country = ''
+        else:
+            from_ = findcsv('airports.dat', 4, getplaneRoutefromData(flight).text[:4])
+            from_airport = from_[1]
+            from_city = from_[2]
+            from_country = from_[3]
+            to_ = findcsv('airports.dat', 4, getplaneRoutetoData(flight).text[:4])
+            to_airport = to_[1]
+            to_city = to_[2]
+            to_country = to_[3]
         altitude = ac['altitude']
-        from_ = findcsv('airports.dat', 4, getplaneRoutefromData(flight).text[:4])
-        from_airport = from_[1]
-        from_city = from_[2]
-        from_country = from_[3]
-        to_ = findcsv('airports.dat', 4, getplaneRoutetoData(flight).text[:4])
-        to_airport = to_[1]
-        to_city = to_[2]
-        to_country = to_[3]
         b = bearing(MY_LAT, MY_LONG, float(ac['lat']), float(ac['lon']))
         trak = float(ac['trak'])
         spotted(flight, airline, from_airport, from_city, from_country,
