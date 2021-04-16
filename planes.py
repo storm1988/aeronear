@@ -439,8 +439,8 @@ def spotted(flight, airline, from_airport, from_city, from_country,
     y = text(d, to_country_offset, y, to_country, 24)
 
     y = 480 - spacing
-    y = text(d, 10, y, altitude + ' ft', 24, True)
-    y = text(d, 10, y, aircraft, 24, True)
+    y = text(d, 10, y, str(altitude) + ' ft', 24, True)
+    y = text(d, 10, y, str(aircraft), 24, True)
     y = text(d, 10, y, str(round(track)) + '°', 24, True)
 
     img = ImageOps.flip(img)
