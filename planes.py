@@ -509,7 +509,7 @@ def blank():
 # required contains a list of fields that must be present and
 # non-empty in the returned JSON
 
-required = ['hex', 'lat', 'lon', 'trak']
+required = ['hex', 'lat', 'lon', 'track', 'altitude']
 
 strip_spin()
 
