@@ -443,8 +443,6 @@ def spotted(flight, airline, from_airport, from_city, from_country,
     y = text(d, 10, y, str(aircraft), 24, True)
     y = text(d, 10, y, str(round(track)) + '°', 24, True)
 
-    img = ImageOps.flip(img)
-    img = ImageOps.mirror(img)
     screen_show(img)
     #screen_backlight(True)
     plane_track(track)
@@ -509,7 +507,7 @@ def blank():
 # required contains a list of fields that must be present and
 # non-empty in the returned JSON
 
-required = ['hex', 'lat', 'lon', 'track', 'altitude']
+required = ['hex', 'lat', 'lon', 'track', 'altitude', 'flight']
 
 strip_spin()
 
