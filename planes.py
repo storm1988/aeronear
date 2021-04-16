@@ -584,11 +584,11 @@ while True:
             to_city = ''
             to_country = ''
         else:
-            from_ = findcsv('airports.dat', 4, getplaneRoutefromData(flight).text[:4])
+            from_ = findcsv('airports.dat', 5, getplaneRoutefromData(flight).text[:4])
             from_airport = from_[1]
             from_city = from_[2]
             from_country = from_[3]
-            to_ = findcsv('airports.dat', 4, getplaneRoutetoData(flight).text[:4])
+            to_ = findcsv('airports.dat', 5, getplaneRoutetoData(flight).text[:4])
             to_airport = to_[1]
             to_city = to_[2]
             to_country = to_[3]
