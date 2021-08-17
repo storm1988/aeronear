@@ -2,11 +2,14 @@
 
 # Small device that shows the nearest plane using Dump1090
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+
+from PIL import Image, ImageDraw, ImageFont
 import os
 import csv
 import requests
 import math
+import haversine
 
 import RPi.GPIO as GPIO
 import time
@@ -15,9 +18,14 @@ import board
 
 import subprocess
 
+# make sure we are in the same working directory
+abspath = os.path.abspath(__file__)
+dname = os.path.dirname(abspath)
+os.chdir(dname)
+
 # Contains API_KEY, MY_LAT, MY_LONG and RADIUS
 
-from planes_config import MY_LAT, MY_LONG, RADIUS
+from planes_config import MY_LAT, MY_LONG
 
 # Contains the north and position variables and is used to avoid
 # calibration position is the current position of the stepper motor in
@@ -33,7 +41,6 @@ GPIO.setwarnings(False)
 BUTTON_PIN = 23
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-
 def button_wait():
     while GPIO.input(BUTTON_PIN) == GPIO.LOW:
         pass
@@ -44,12 +51,7 @@ def button_wait():
 
 LED_COUNT = 16
 STRIP_PIN = board.D18
-strip = neopixel.NeoPixel(STRIP_PIN, LED_COUNT)
-
-# Default brightness used for each of the RGB components of the LEDs'
-# colour
-
-led_intensity = 128
+strip = neopixel.NeoPixel(STRIP_PIN, LED_COUNT, brightness=0.3)
 
 
 # strip_clear turns off every LED on the strip, call strip.show()
@@ -68,43 +70,12 @@ def strip_spin():
     for i in range(0, LED_COUNT):
         if i > 0:
             strip[i - 1] = (0, 0, 0)
-        strip[i] = (0, 0, led_intensity)
+        strip[i] = (0, 0, 128)
         strip.show()
         time.sleep(0.1)
 
     strip_clear()
     strip.show()
-
-
-# calibrate_strip is used on start up to find the position of north
-# where the device is installed. The user needs to hold the blue
-# button down until the LED closest to north is illuminated. After 5
-# seconds without touching the blue button the north position is fixed
-# and returned by the function. This function leaves the LED pointing
-# to north illuminated but in a different colour to show that the
-# user's choice is confirmed
-def calibrate_strip():
-    strip_clear()
-    strip.show()
-    button_wait()
-
-    i = 0
-    strip[i] = (0, 0, led_intensity)
-    strip.show()
-    c = time.time()
-
-    while (time.time() - c) < 5:
-        if GPIO.input(BUTTON_PIN) == GPIO.HIGH:
-            strip[i] = (0, 0, 0)
-            i = (i + 1) % LED_COUNT
-            strip[i] = (0, 0, led_intensity)
-            strip.show()
-            time.sleep(0.1)
-            c = time.time()
-
-    strip[i] = (led_intensity, 0, 0)
-    strip.show()
-    return i
 
 
 # FUNCTIONS TO CONTROL THE MODEL AIRCRAFT USED TO INDICATE THE TRACK
@@ -219,23 +190,7 @@ def plane_track(track):
         delta = revolution - delta
         clockwise = not clockwise
 
-    plane_rotate(0.01, delta, clockwise)
-
-
-# calibrate_plane is used to point the model aircraft to north on
-# startup. The user rotates the the plane by holding down the blue
-# button until it points in the right direction and then releases
-# it. After five seconds with no pressure on the button the plane's
-# position is set
-def calibrate_plane():
-    button_wait()
-
-    c = time.time()
-
-    while (time.time() - c) < 5:
-        if GPIO.input(BUTTON_PIN) == GPIO.HIGH:
-            plane_rotate(0.01, 4, True)
-            c = time.time()
+    plane_rotate(0.002, delta, clockwise)
 
 
 # findcsv reads a CSV file from filename and tries to find match in
@@ -253,26 +208,58 @@ def findcsv(filename, col, match):
     return [match, match, match, match, match]
 
 
-# getplanes calls the ADBS Exchange API to get the JSON containing
-# nearby planes. It returns the result of requests.get()
+# getplanes calls the Dump1090 API to get the JSON containing
+# planes. It returns the result of requests.get()
 def getplanes():
-    url = "http://192.168.1.61/dump1090/data/aircraft.json"
-    return requests.get(url)
+    try:
+        url = "http://192.168.1.61/dump1090/data/aircraft.json"
+        return requests.get(url)
+    except requests.exceptions.ConnectionError:
+        return ""
 
 
 def getplaneExtraData(hexcode):
-    url = "https://api.joshdouch.me/api/aircraft/%s" % (hexcode)
-    return requests.get(url)
+    try:
+        url = "https://api.joshdouch.me/api/aircraft/%s" % (hexcode)
+        return requests.get(url)
+    except requests.exceptions.ConnectionError:
+        return ""
+
+
+def getplaneReg(hexcode):
+    try:
+        url = "https://api.joshdouch.me/hex-reg.php?hex=%s" % (hexcode)
+        return requests.get(url)
+    except requests.exceptions.ConnectionError:
+        return ""
 
 
 def getplaneRoutetoData(callsign):
-    url = "https://api.joshdouch.me/callsign-des_ICAO.php?callsign=%s" % (callsign)
-    return requests.get(url)
+    try:
+        url = "https://api.joshdouch.me/callsign-des_ICAO.php?callsign=%s" % (callsign)
+        return requests.get(url)
+    except requests.exceptions.ConnectionError:
+        return ""
 
 
 def getplaneRoutefromData(callsign):
-    url = "https://api.joshdouch.me/callsign-origin_ICAO.php?callsign=%s" % (callsign)
-    return requests.get(url)
+    try:
+        url = "https://api.joshdouch.me/callsign-origin_ICAO.php?callsign=%s" % (callsign)
+        return requests.get(url)
+    except requests.exceptions.ConnectionError:
+        return ""
+
+
+def getplaneImg(hexcode):
+    try:
+        url = "https://api.joshdouch.me/hex-image-v2-thumb.php?hex=%s" % (hexcode)
+        imgurl = requests.get(url).text
+        if len(imgurl) > 1:
+            return requests.get(imgurl, stream=True)
+        else:
+            return False
+    except:
+        return False
 
 
 # FUNCTIONS FOR DRAWING TEXT AND IMAGES ON THE SCREEN
@@ -315,20 +302,26 @@ last_text = ''
 #
 # The default (preferred) font size is s (in pt) and will
 # automatically be reduced until the text fits across the screen
-def text(d, x, y, t, s, up=False):
+def text(d, x, y, t, s, up=False, position='l', colour=(240, 240, 240)):
     global last_text
     if last_text == t:
         return y
     last_text = t
 
     while s >= 10:
+        lx = x
         f = ImageFont.truetype('DejaVuSansMono.ttf', s)
         (w, h) = f.getsize(t)
-        if w <= 320 - x:
+        if position == 'r':
+            lx = x - w
+            if lx < 200:
+                lx = 200
+        if position == 'c':
+            lx = x - (w/2)
+        if w <= 320 - lx:
             if up:
                 y -= h
-
-            d.text((x, y), t, fill=(240, 240, 240), font=f)
+            d.text((lx, y), t, colour, font=f)
 
             if up:
                 return y - spacing
@@ -339,17 +332,7 @@ def text(d, x, y, t, s, up=False):
     return y
 
 
-# screen_backlight turns the backlight for the screen on or off
-def screen_backlight(on):
-    if on:
-        v = 1
-    else:
-        v = 0
-
-    subprocess.run('echo "%d" > /sys/class/backlight/soc:backlight/brightness' % v,
-                   shell=True)
-
-
+plane_picture = '/tmp/planepic.jpg'
 screen_tmp = '/tmp/planes.tmp.png'
 screen_file = '/tmp/planes.png'
 screen_links = ['/tmp/planes%d.png' % i for i in range(1, 4)]
@@ -389,62 +372,92 @@ def screen_start():
         subprocess.run(['ln -s %s %s' % (screen_file, l)], shell=True)
 
 
+# get a colour for the strip LEDs depending on the altitude.
+def altitude_colour(alt):
+    # Input a value 0 to 255 to get a color value.
+    # The colours are a transition r - g - b - back to r.
+
+    pos = int(alt / 100)
+    if pos > 340:
+        pos = 340
+    elif pos < 0:
+        pos = 0
+    if pos < 85:
+        r = 255
+        g = int(pos * 3)
+        b = 0
+    elif pos < 170:
+        pos -= 85
+        r = int(255 - pos * 3)
+        g = 255
+        b = 0
+    elif pos < 255:
+        pos -= 170
+        r = 0
+        g = 255
+        b = int(pos * 3)
+    else:
+        pos -= 255
+        r = 0
+        g = int(255 - pos * 3)
+        b = 255
+    return r, g, b
+
+
 # spotted is called when an aircraft has been found and it updates the
 # screen, moves the model aircraft to track the actual aircraft and
 # sets the LED strip to show where to look for it
-def spotted(flight, airline, from_airport, from_city, from_country,
-            to_airport, to_city, to_country, aircraft, altitude,
-            bearing, track):
+def spotted(flight, airline, from_airport, from_country,
+            to_airport, to_country, aircraftmodel, type, altitude,
+            bearing, track, reg, photo, dist):
     strip_clear()
-    strip[(north + int(LED_COUNT * bearing / 360)) % LED_COUNT] = (0,
-                                                                   led_intensity,
-                                                                   0)
+    strip[(north - int(LED_COUNT * bearing / 360)) % LED_COUNT] = altitude_colour(altitude)
     strip.show()
 
     img = Image.new('RGB', (320, 480), color=(0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    # Try to use a large font for the airline name
-
-    top = 32
-    if len(airline) > 15:
-        top = 24
-
-    y = 10
-    y = text(d, 10, y, airline, 32)
+    y = 0
+    y = text(d, 160, y, airline, 32, position='c')
+    text(d, 310, y, reg, 24, position='r')
     y = text(d, 10, y, flight, 24)
-    y += 20
-
+    text(d, 310, y, str(aircraftmodel), 24, position='r')
+    y = text(d, 10, y, str(round(dist,1)) + ' miles', 24)
+    text(d, 310, y, str(type), 24, position='r')
+    y = text(d, 10, y, str(altitude) + ' ft', 24)
+    y += 3
+    d.line([(0, y), (320, y)])
+    y += 3
     # TODO: do this on loading the CSV
     from_airport = from_airport.replace(' Airport', '')
     to_airport = to_airport.replace(' Airport', '')
     from_airport = from_airport.replace(' International', '')
     to_airport = to_airport.replace(' International', '')
 
-    y = text(d, 10, y, from_airport, 24)
-    y = text(d, 10, y, from_city, 24)
-    from_country_offset = flag(img, from_country, 10, y)
-    y = text(d, from_country_offset, y, from_country, 24)
-    y += spacing * 2
+    y = text(d, 160, y, from_airport, 24, position='c')
+    flag(img, from_country, 10, y)
+    y = text(d, 160, y, from_country, 24, position='c')
+    y += spacing
 
     icon = Image.open('images/down.png', 'r')
-    img.paste(icon, (10, y), icon)
     (w, h) = icon.size
+    img.paste(icon, (int(160-(w/2)), y), icon)
     icon.close()
     y += h + spacing
 
-    y = text(d, 10, y, to_airport, 24)
-    y = text(d, 10, y, to_city, 24)
-    to_country_offset = flag(img, to_country, 10, y)
-    y = text(d, to_country_offset, y, to_country, 24)
-
-    y = 480 - spacing
-    y = text(d, 10, y, str(altitude) + ' ft', 24, True)
-    y = text(d, 10, y, str(aircraft), 24, True)
-    y = text(d, 10, y, str(round(track)) + '°', 24, True)
-
+    y = text(d, 160, y, to_airport, 24, position='c')
+    flag(img, to_country, 10, y)
+    y = text(d, 160, y, to_country, 24, position='c')
+    y += spacing * 2
+    if photo is not False:
+        pic = Image.open(plane_picture, 'r')
+        basewidth = 220
+        wpercent = (basewidth / float(pic.size[0]))
+        hsize = int((float(pic.size[1]) * float(wpercent)))
+        pic = pic.resize((basewidth, hsize), Image.ANTIALIAS)
+        (w, h) = pic.size
+        img.paste(pic, box=(40, 470-h))
     screen_show(img)
-    #screen_backlight(True)
     plane_track(track)
     save_position()
 
@@ -458,23 +471,9 @@ def save_position():
     f.close()
 
 
-# haversine works out the distance on the Earth's surface between
-# two points given a latitude and longitude. 
-def haversine(la1, lo1, la2, lo2):
-    phi1 = math.radians(la1)
-    phi2 = math.radians(la2)
-    delta_phi = math.radians(la2 - la1)
-    delta_lambda = math.radians(lo2 - lo1)
-
-    a = math.sin(delta_phi / 2.0) ** 2 + \
-        math.cos(phi1) * math.cos(phi2) * \
-        math.sin(delta_lambda / 2.0) ** 2
-    return 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
 # distance returns the distance to an aircraft
 def distance(a):
-    return haversine(MY_LAT, MY_LONG, float(a['lat']), float(a['lon']))
+    return haversine.haversine((MY_LAT, MY_LONG), (float(a['lat']), float(a['lon'])), unit=haversine.Unit.NAUTICAL_MILES)
 
 
 # bearing works out the bearing of one lat/long from another
@@ -495,14 +494,99 @@ def bearing(la1, lo1, la2, lo2):
 # blank is used to ensure that the screen and LEDs are off when
 # there's no activity. It shuts off the screen after drawing black
 # image on it and shuts off the LEDs.
-def blank():
+def blank(screenText = "No aircraft"):
     strip_clear()
     strip.show()
     img = Image.new('RGB', (320, 480), color=(0, 0, 0))
     d = ImageDraw.Draw(img)
+    text(d, 160, 180, screenText, 32, position='c')
     screen_show(img)
-    #screen_backlight(False)
 
+
+# select aircraft to lock onto
+def select_aircraft_screen(nearac, index):
+    strip_clear()
+    strip.show()
+    img = Image.new('RGB', (320, 480), color=(0, 0, 0))
+    d = ImageDraw.Draw(img)
+    y = 0
+    y += 3
+    d.line([(0, y), (320, y)])
+    y += 3
+    for step in range(len(nearac)):
+        if step == index:
+            y = text(d, 160, y, nearac[step]['flight'], 32, position='c', colour=(255, 255, 255))
+        else:
+            y = text(d, 160, y, nearac[step]['flight'], 32, position='c', colour=(150, 150, 150))
+        y += 3
+        d.line([(0, y), (320, y)])
+        y += 3
+    if len(nearac) == index:
+        y = text(d, 160, y, "Auto select", 32, position='c', colour=(255, 255, 255))
+    else:
+        y = text(d, 160, y, "Auto select", 32, position='c', colour=(150, 150, 150))
+    y += 3
+    d.line([(0, y), (320, y)])
+    y += 3
+    screen_show(img)
+
+
+# calibrate_plane is used to point the model aircraft to north on
+# startup. The user rotates the the plane by holding down the blue
+# button until it points in the right direction and then releases
+# it. After five seconds with no pressure on the button the plane's
+# position is set
+def calibrate_plane():
+    button_wait()
+
+    c = time.time()
+
+    while (time.time() - c) < 5:
+        if GPIO.input(BUTTON_PIN) == GPIO.HIGH:
+            plane_rotate(0.01, 4, True)
+            c = time.time()
+
+
+# calibrate_strip is used on start up to find the position of north
+# where the device is installed. The user needs to hold the blue
+# button down until the LED closest to north is illuminated. After 5
+# seconds without touching the blue button the north position is fixed
+# and returned by the function. This function leaves the LED pointing
+# to north illuminated but in a different colour to show that the
+# user's choice is confirmed
+def calibrate_strip():
+    strip_clear()
+    strip.show()
+    button_wait()
+
+    i = LED_COUNT-1
+    strip[i] = (0, 0, 128)
+    strip.show()
+    c = time.time()
+
+    while (time.time() - c) < 5:
+        if GPIO.input(BUTTON_PIN) == GPIO.HIGH:
+            strip[i] = (0, 0, 0)
+            i = (i - 1) % LED_COUNT
+            strip[i] = (0, 0, 128)
+            strip.show()
+            time.sleep(0.2)
+            c = time.time()
+
+    strip[i] = (128, 0, 0)
+    strip.show()
+    return i
+
+
+def calibration():
+    global north
+    global position
+    blank("Set LED to north")
+    north = calibrate_strip()
+    blank("Set plane to north")
+    calibrate_plane()
+    position = 0
+    save_position()
 
 # required contains a list of fields that must be present and
 # non-empty in the returned JSON
@@ -511,94 +595,171 @@ required = ['hex', 'lat', 'lon', 'track', 'altitude', 'flight']
 
 strip_spin()
 
-if north == -1:
-    north = calibrate_strip()
-    calibrate_plane()
-    position = 0
-    save_position()
-
 strip_clear()
 strip.show()
 
 screen_start()
-blank()
 
-# The default update_delay is 30 seconds. Until an aircraft is seen
+if north == -1:
+    calibration()
+
+blank("Starting up")
+
+# The default update_delay is 5000 milliseconds. Until an aircraft is seen
 # the code checks once every 30 seconds for new aircraft; once
 # tracking a plane it updates every ten seconds. Once there are no
 # more planes it goes back to checking every 30 seconds
 
-no_planes_delay = 30
-tracking_plane_delay = 10
+no_planes_delay = 500
+tracking_plane_delay = 500
+calibration_delay = 500
 update_delay = 0
+currentPlane = ""
+button_state = False
+select_aircraft = False
+select_aircraft_hex = ""
+
+planemake = ""
+planetype = ""
+airline = ""
+flight = ''
+from_airport = ''
+from_city = ''
+from_country = ''
+to_airport = ''
+to_city = ''
+to_country = ''
+reg = ''
+photo = False
+blanked = True
+
 
 while True:
-    time.sleep(update_delay)
 
     planes = getplanes()
-    j = planes.json()
+    if planes is not "":
+        j = planes.json()
 
-    if j is None or j['aircraft'] is None:
-        print("No planes received")
-        blank()
-        continue
+        if j is None or j['aircraft'] is None:
+            print("No planes received")
+            blank()
+            blanked = True
+            continue
 
-    # Build near so that it contains aircraft that have all the fields
-    # in required and are not on the ground
+        # Build near so that it contains aircraft that have all the fields
+        # in required and are not on the ground
 
-    near = []
-    for ac in j['aircraft']:
-        ok = True
-        for r in required:
-            if r not in ac:
-                ok = False
-                break
+        near = []
+        for ac in j['aircraft']:
+            ok = True
+            for r in required:
+                if r not in ac:
+                    ok = False
+                    break
 
-        if ok:
-            near.append(ac)
+            if ok and ac['altitude'] != "ground":
+                near.append(ac)
 
-    # If there are aircraft then sort them by distance from the device
-    # and display the nearest
+        # If there are aircraft then sort them by distance from the device
+        # and display the nearest
 
-    if len(near) > 0:
-        print(len(near).__str__() + " planes nearby")
-        near.sort(key=distance)
-        ac = near[0]
-        extra = getplaneExtraData(ac['hex']).json()
-        try:
-            extra['ModeS']
-        except:
-            plane = ""
-            airline = ""
+        if len(near) > 0:
+            blanked = False
+            #print(len(near).__str__() + " planes nearby")
+            if select_aircraft:
+                ac = None
+                for single in near:
+                    if single["hex"] == select_aircraft_hex:
+                        ac = single
+                if ac is None:
+                    #print("Plane lock lost")
+                    select_aircraft = False
+                    near.sort(key=distance)
+                    ac = near[0]
+            else:
+                near.sort(key=distance)
+                ac = near[0]
+            if ac['hex'] != currentPlane:
+                #print("New plane received")
+                currentPlane = ac['hex']
+                extra = getplaneExtraData(ac['hex']).json()
+                reg = getplaneReg(ac['hex']).text
+                photo = getplaneImg(ac['hex'])
+                if photo != False:
+                    with open(plane_picture, 'wb') as f:
+                        f.write(photo.content)
+                try:
+                    extra['ModeS']
+                except:
+                    planemake = ""
+                    planetype = ""
+                    airline = ""
+                else:
+                    planemake = extra['Manufacturer']
+                    planetype = extra['Type']
+                    airline = extra['RegisteredOwners']
+                try:
+                    flight = ac['flight'].strip()
+                except:
+                    flight = ''
+                    from_airport = ''
+                    from_city = ''
+                    from_country = ''
+                    to_airport = ''
+                    to_city = ''
+                    to_country = ''
+                else:
+                    from_ = findcsv('airports.dat', 5, getplaneRoutefromData(flight).text[:4])
+                    from_airport = from_[1]
+                    from_city = from_[2]
+                    from_country = from_[3]
+                    to_ = findcsv('airports.dat', 5, getplaneRoutetoData(flight).text[:4])
+                    to_airport = to_[1]
+                    to_city = to_[2]
+                    to_country = to_[3]
+            altitude = ac['altitude']
+            b = bearing(MY_LAT, MY_LONG, float(ac['lat']), float(ac['lon']))
+            track = float(ac['track'])
+            spotted(flight, airline, from_airport, from_country,
+                    to_airport, to_country, planemake, planetype, altitude, b, track, reg, photo, distance(ac))
+            update_delay = tracking_plane_delay
         else:
-            plane = findcsv('planes.dat', 2, extra['ICAOTypeCode'])[0]
-            airline = findcsv('airlines.dat', 4, extra['OperatorFlagCode'])[1]
-        try:
-            flight = ac['flight'].strip()
-        except:
-            flight = ''
-            from_airport = ''
-            from_city = ''
-            from_country = ''
-            to_airport = ''
-            to_city = ''
-            to_country = ''
-        else:
-            from_ = findcsv('airports.dat', 5, getplaneRoutefromData(flight).text[:4])
-            from_airport = from_[1]
-            from_city = from_[2]
-            from_country = from_[3]
-            to_ = findcsv('airports.dat', 5, getplaneRoutetoData(flight).text[:4])
-            to_airport = to_[1]
-            to_city = to_[2]
-            to_country = to_[3]
-        altitude = ac['altitude']
-        b = bearing(MY_LAT, MY_LONG, float(ac['lat']), float(ac['lon']))
-        track = float(ac['track'])
-        spotted(flight, airline, from_airport, from_city, from_country,
-                to_airport, to_city, to_country, plane, altitude, b, track)
-        update_delay = tracking_plane_delay
-    else:
-        update_delay = no_planes_delay
-        blank()
-        print("No planes nearby")
+            update_delay = no_planes_delay
+            if not blanked:
+                blank()
+                blanked = True
+            #print("No planes nearby")
+
+        count = 0
+        button_count = 0
+        select_index = 0
+        while count <= update_delay:
+            time.sleep(0.01)
+            if GPIO.input(BUTTON_PIN) == GPIO.HIGH and not button_state:
+                #print("button pressed")
+                button_state = True
+                button_count = 0
+                count = 0
+            elif GPIO.input(BUTTON_PIN) == GPIO.LOW and button_state:
+                #print("button released")
+                button_state = False
+                if select_aircraft:
+                    select_index += 1
+                    if len(near) == select_index:
+                        select_aircraft = False
+                    else:
+                        select_aircraft_hex = near[select_index]['hex']
+                    select_aircraft_screen(near, select_index)
+                elif not blanked:
+                    select_aircraft = True
+                    select_index = 0
+                    select_aircraft_screen(near, select_index)
+                    select_aircraft_hex = near[select_index]['hex']
+
+            if button_state:
+                button_count += 1
+                if button_count >= calibration_delay:
+                    button_state = False
+                    calibration()
+            else:
+                count += 1
