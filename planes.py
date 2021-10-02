@@ -25,7 +25,7 @@ os.chdir(dname)
 
 # Contains API_KEY, MY_LAT, MY_LONG and RADIUS
 
-from planes_config import MY_LAT, MY_LONG
+from planes_config import MY_LAT, MY_LONG, DUMP1090, FR24, SOURCE
 
 # Contains the north and position variables and is used to avoid
 # calibration position is the current position of the stepper motor in
@@ -211,11 +211,39 @@ def findcsv(filename, col, match):
 # getplanes calls the Dump1090 API to get the JSON containing
 # planes. It returns the result of requests.get()
 def getplanes():
-    try:
-        url = "http://192.168.1.61/dump1090/data/aircraft.json"
-        return requests.get(url)
-    except requests.exceptions.ConnectionError:
-        return ""
+    if SOURCE == "DUMP1090":
+        try:
+            url = DUMP1090
+            planes = requests.get(url)
+            try:
+                j = planes.json()
+                if j['aircraft'] is None:
+                    return ""
+                else:
+                    return j['aircraft']
+            except:
+                return ""
+        except requests.exceptions.ConnectionError:
+            return ""
+    elif SOURCE == "FR24":
+        url = FR24
+        FR24planes = requests.get(url)
+        FR24jsonresult = []
+        try:
+            FR24json = FR24planes.json()
+            for jsonobj in FR24json:
+                setjson = {}
+                setjson['hex'] = FR24json[jsonobj][0]
+                setjson['lat'] = FR24json[jsonobj][1]
+                setjson['lon'] = FR24json[jsonobj][2]
+                setjson['track'] = FR24json[jsonobj][3]
+                setjson['altitude'] = FR24json[jsonobj][4]
+                setjson['flight'] = FR24json[jsonobj][16]
+                FR24jsonresult.append(setjson)
+            return FR24jsonresult
+        except:
+            return ""
+
 
 
 def getplaneExtraData(hexcode):
@@ -229,7 +257,7 @@ def getplaneExtraData(hexcode):
 def getplaneReg(hexcode):
     try:
         url = "https://api.joshdouch.me/hex-reg.php?hex=%s" % (hexcode)
-        return requests.get(url)
+        return requests.get(url).text
     except requests.exceptions.ConnectionError:
         return ""
 
@@ -637,20 +665,18 @@ blanked = True
 while True:
 
     planes = getplanes()
-    if planes is not "":
-        j = planes.json()
 
-        if j is None or j['aircraft'] is None:
-            print("No planes received")
-            blank()
-            blanked = True
-            continue
+    if planes is "":
+        print("No planes received")
+        time.sleep(5)
+        if not blanked:
+            blank("No Connection!")
+        blanked = True
+        continue
 
-        # Build near so that it contains aircraft that have all the fields
-        # in required and are not on the ground
-
+    else:
         near = []
-        for ac in j['aircraft']:
+        for ac in planes:
             ok = True
             for r in required:
                 if r not in ac:
@@ -662,7 +688,7 @@ while True:
 
         # If there are aircraft then sort them by distance from the device
         # and display the nearest
-
+        print("Received "+str(len(near))+" planes")
         if len(near) > 0:
             blanked = False
             #print(len(near).__str__() + " planes nearby")
@@ -683,7 +709,7 @@ while True:
                 #print("New plane received")
                 currentPlane = ac['hex']
                 extra = getplaneExtraData(ac['hex']).json()
-                reg = getplaneReg(ac['hex']).text
+                reg = getplaneReg(ac['hex'])
                 photo = getplaneImg(ac['hex'])
                 if photo != False:
                     with open(plane_picture, 'wb') as f:
@@ -728,7 +754,7 @@ while True:
             if not blanked:
                 blank()
                 blanked = True
-            #print("No planes nearby")
+            print("No planes nearby")
 
         count = 0
         button_count = 0
